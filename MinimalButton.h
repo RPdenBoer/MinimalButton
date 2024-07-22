@@ -2,121 +2,154 @@
 
 #include "Arduino.h"
 
-enum PressLength {NO_PRESS, SHORT_PRESS, LONG_PRESS, SUPER_PRESS, DOUBLE_PRESS};
+enum PressLength
+{
+  NO_PRESS,
+  SHORT_PRESS,
+  LONG_PRESS,
+  SUPER_PRESS,
+  DOUBLE_PRESS
+};
 
 template <uint8_t pin>
 class MinimalButton
 {
-    static volatile bool switchChanged;
-    static volatile uint32_t changeTime;
+  static volatile bool switchChanged;
+  static volatile uint32_t changeTime;
 
-    typedef void (*CallbackAll)(PressLength);
-    typedef void (*CallbackSingle)(void);
+  typedef void (*CallbackAll)(PressLength);
+  typedef void (*CallbackSingle)(void);
 
 public:
-  MinimalButton(bool useInterrupt = true) : _useInterrupt(useInterrupt){
+  MinimalButton(bool useInterrupt = true) : _useInterrupt(useInterrupt)
+  {
   }
 
-  void begin(){
-      init();
+  void begin()
+  {
+    init();
   }
 
-  bool begin(uint16_t newShortDelay, uint16_t newDoubleDelay, uint16_t newLongDelay, uint16_t newSuperDelay){
-    if(newLongDelay > newShortDelay && newSuperDelay > newLongDelay && newShortDelay + newDoubleDelay < newLongDelay){
+  bool begin(uint16_t newShortDelay, uint16_t newDoubleDelay, uint16_t newLongDelay, uint16_t newSuperDelay)
+  {
+    if (newLongDelay > newShortDelay && newSuperDelay > newLongDelay && newShortDelay + newDoubleDelay < newLongDelay)
+    {
       _ShortDelay = newShortDelay;
       _DoubleDelay = newDoubleDelay;
       _LongDelay = newLongDelay;
       _SuperDelay = newSuperDelay;
-      
+
       init();
 
       return true;
     }
-    else{
+    else
+    {
       Serial.println("error: invalid delay values");
       return false;
     }
   }
 
-  PressLength process(){
+  PressLength process()
+  {
 
     PressLength returnVal = NO_PRESS;
 
-    if(_useInterrupt){
-      if(switchChanged){
+    if (_useInterrupt)
+    {
+      if (switchChanged)
+      {
         _currentState = !digitalRead(pin);
         switchChanged = false;
       }
     }
-    else{
+    else
+    {
       _currentState = !digitalRead(pin);
       changeTime = millis();
     }
 
-    if(_currentState && !_lastState){
+    if (_currentState && !_lastState)
+    {
       _pressTime = changeTime;
       _lastState = true;
     }
-    else if(!_currentState && _lastState){ 
-        _releaseTime = changeTime;
-        _lastState = false;
+    else if (!_currentState && _lastState)
+    {
+      _releaseTime = changeTime;
+      _lastState = false;
 
-        unsigned long deltaTime = _releaseTime - _pressTime;
+      unsigned long deltaTime = _releaseTime - _pressTime;
 
-        if (deltaTime >= _ShortDelay && deltaTime < _LongDelay){
-            if(_pressPending && _releaseTime - _lastShortTime <= _DoubleDelay){
-              returnVal = DOUBLE_PRESS;
-              _pressPending = false;
-            }
-            else{
-              _lastShortTime = _releaseTime;
-              _pressPending = true;
-            }
+      if (deltaTime >= _ShortDelay && deltaTime < _LongDelay)
+      {
+        if (_pressPending && _releaseTime - _lastShortTime <= _DoubleDelay)
+        {
+          returnVal = DOUBLE_PRESS;
+          _pressPending = false;
         }
-        else if (deltaTime >= _LongDelay && deltaTime < _SuperDelay) {
-            returnVal = LONG_PRESS;
+        else
+        {
+          _lastShortTime = _releaseTime;
+          _pressPending = true;
         }
-        else if (deltaTime >= _SuperDelay) {
-            returnVal = SUPER_PRESS;
-        }
+      }
+      else if (deltaTime >= _LongDelay && deltaTime < _SuperDelay)
+      {
+        returnVal = LONG_PRESS;
+      }
+      else if (deltaTime >= _SuperDelay)
+      {
+        returnVal = SUPER_PRESS;
+      }
     }
 
-    if(_pressPending && millis() - _lastShortTime > _DoubleDelay){
+    if (_pressPending && millis() - _lastShortTime > _DoubleDelay)
+    {
       returnVal = SHORT_PRESS;
       _pressPending = false;
     }
 
-    if(returnVal != NO_PRESS){
-      if(_callbackAll) _callbackAll(returnVal);
+    if (returnVal != NO_PRESS)
+    {
+      if (_callbackAll)
+        _callbackAll(returnVal);
 
-      switch (returnVal){
+      switch (returnVal)
+      {
       case SHORT_PRESS:
-        if(_callbackShort) _callbackShort();
+        if (_callbackShort)
+          _callbackShort();
         break;
       case DOUBLE_PRESS:
-        if(_callbackDouble) _callbackDouble();
+        if (_callbackDouble)
+          _callbackDouble();
         break;
       case LONG_PRESS:
-        if(_callbackLong) _callbackLong();
+        if (_callbackLong)
+          _callbackLong();
         break;
       case SUPER_PRESS:
-        if(_callbackSuper) _callbackSuper();
+        if (_callbackSuper)
+          _callbackSuper();
         break;
       }
     }
     return returnVal;
   }
 
-
-  bool state(){
+  bool state()
+  {
     return _currentState;
   }
 
-  void attach(CallbackAll funcAll) {
+  void attach(CallbackAll funcAll)
+  {
     _callbackAll = funcAll;
   }
 
-  void attach(CallbackSingle funcShort = NULL, CallbackSingle funcDouble = NULL, CallbackSingle funcLong = NULL, CallbackSingle funcSuper = NULL) {
+  void attach(CallbackSingle funcShort = NULL, CallbackSingle funcDouble = NULL, CallbackSingle funcLong = NULL, CallbackSingle funcSuper = NULL)
+  {
     _callbackShort = funcShort;
     _callbackDouble = funcDouble;
     _callbackLong = funcLong;
@@ -124,28 +157,38 @@ public:
   }
 
 private:
+#ifdef ESP32
   static void IRAM_ATTR interruptHandler()
+#else
+#ifdef ARDUINO_ARCH_STM32
+  __attribute__((section(".data"))) static void interruptHandler()
+#else
+  static void interruptHandler()
+#endif
+#endif
   {
-      switchChanged = true;
-      changeTime = millis();
+    switchChanged = true;
+    changeTime = millis();
   }
 
   void init()
   {
-      pinMode(pin, INPUT_PULLUP);
-      if(_useInterrupt){
-        Serial.print("attaching interrupt pin: ");
-        Serial.println(pin);
-        attachInterrupt(digitalPinToInterrupt(pin), interruptHandler, CHANGE);
-      }
-      else{
-        Serial.print("not using interrupt pin: ");
-        Serial.println(pin);
-      }
+    pinMode(pin, INPUT_PULLUP);
+    if (_useInterrupt)
+    {
+      Serial.print("attaching interrupt pin: ");
+      Serial.println(pin);
+      attachInterrupt(digitalPinToInterrupt(pin), interruptHandler, CHANGE);
+    }
+    else
+    {
+      Serial.print("not using interrupt pin: ");
+      Serial.println(pin);
+    }
   }
 
   bool _useInterrupt = true;
- 
+
   bool _currentState = false;
   bool _lastState = false;
 
