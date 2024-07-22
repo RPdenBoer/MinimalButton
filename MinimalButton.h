@@ -5,10 +5,12 @@
 enum PressLength
 {
     NO_PRESS,
+    TINY_PRESS,
     SHORT_PRESS,
     LONG_PRESS,
     SUPER_PRESS,
-    DOUBLE_PRESS
+    DOUBLE_PRESS,
+    CONSTANT_PRESS
 };
 
 template <uint32_t pin>
@@ -30,10 +32,11 @@ public:
         init();
     }
 
-    bool begin(uint16_t newShortDelay, uint16_t newDoubleDelay, uint16_t newLongDelay, uint16_t newSuperDelay)
+    bool begin(uint16_t newTinyDelay, uint16_t newShortDelay, uint16_t newDoubleDelay, uint16_t newLongDelay, uint16_t newSuperDelay)
     {
-        if (newLongDelay > newShortDelay && newSuperDelay > newLongDelay && newShortDelay + newDoubleDelay < newLongDelay)
+        if (newTinyDelay < newShortDelay && newLongDelay > newShortDelay && newSuperDelay > newLongDelay && newShortDelay + newDoubleDelay < newLongDelay)
         {
+            _TinyDelay = newTinyDelay;
             _ShortDelay = newShortDelay;
             _DoubleDelay = newDoubleDelay;
             _LongDelay = newLongDelay;
@@ -57,6 +60,13 @@ public:
             updatePress();
         }
 
+        uint32_t currentTime = millis();
+        if (_currentState && (currentTime - _pressTime > _SuperDelay) && !_constantReported)
+        {
+            _currentPress = CONSTANT_PRESS;
+            _constantReported = true;
+        }
+
         PressLength returnVal = _currentPress;
         _currentPress = NO_PRESS;
 
@@ -67,6 +77,10 @@ public:
 
             switch (returnVal)
             {
+            case TINY_PRESS:
+                if (_callbackTiny)
+                    _callbackTiny();
+                break;
             case SHORT_PRESS:
                 if (_callbackShort)
                     _callbackShort();
@@ -83,6 +97,10 @@ public:
                 if (_callbackSuper)
                     _callbackSuper();
                 break;
+            case CONSTANT_PRESS:
+                if (_callbackConstantPress)
+                    _callbackConstantPress();
+                break;
             }
         }
         return returnVal;
@@ -98,12 +116,14 @@ public:
         _callbackAll = funcAll;
     }
 
-    void attach(CallbackSingle funcShort = NULL, CallbackSingle funcDouble = NULL, CallbackSingle funcLong = NULL, CallbackSingle funcSuper = NULL)
+    void attach(CallbackSingle funcTiny = NULL, CallbackSingle funcShort = NULL, CallbackSingle funcDouble = NULL, CallbackSingle funcLong = NULL, CallbackSingle funcSuper = NULL, CallbackSingle funcConstantPress = NULL)
     {
+        _callbackTiny = funcTiny;
         _callbackShort = funcShort;
         _callbackDouble = funcDouble;
         _callbackLong = funcLong;
         _callbackSuper = funcSuper;
+        _callbackConstantPress = funcConstantPress;
     }
 
 private:
@@ -131,16 +151,18 @@ private:
 
     void updatePress()
     {
-        // Don't have a press waiting to be read...
+        uint32_t currentTime = millis();
+
         if (_currentPress == NO_PRESS)
         {
             _currentState = !digitalRead(pin);
-            _changeTime = millis();
+            _changeTime = currentTime;
 
             if (_currentState && !_lastState)
             {
                 _pressTime = _changeTime;
                 _lastState = true;
+                _constantReported = false;
             }
             else if (!_currentState && _lastState)
             {
@@ -149,9 +171,16 @@ private:
 
                 unsigned long deltaTime = _releaseTime - _pressTime;
 
-                if (deltaTime >= _ShortDelay && deltaTime < _LongDelay)
+                if (deltaTime < _ShortDelay)
                 {
-                    if (_pressPending && _releaseTime - _lastShortTime <= _DoubleDelay)
+                    if (deltaTime >= _TinyDelay)
+                    {
+                        _currentPress = TINY_PRESS;
+                    }
+                }
+                else if (deltaTime >= _ShortDelay && deltaTime < _LongDelay)
+                {
+                    if (_pressPending && (_releaseTime - _lastShortTime <= _DoubleDelay))
                     {
                         _currentPress = DOUBLE_PRESS;
                         _pressPending = false;
@@ -172,39 +201,48 @@ private:
                 }
             }
 
-            if (_pressPending && millis() - _lastShortTime > _DoubleDelay)
+            // Check for pending short press
+            if (_pressPending && (currentTime - _lastShortTime > _DoubleDelay))
             {
                 _currentPress = SHORT_PRESS;
                 _pressPending = false;
             }
         }
+
+        // Check for constant press state only if it's not reported already
+        if (_currentState && (currentTime - _pressTime > _SuperDelay) && !_constantReported)
+        {
+            _currentPress = CONSTANT_PRESS;
+            _constantReported = true;
+        }
     }
 
-    PressLength _currentPress = NO_PRESS;
+    volatile PressLength _currentPress = NO_PRESS;
+    volatile bool _currentState = false;
+    volatile bool _lastState = false;
+    volatile uint32_t _changeTime = 0;
+    volatile bool _constantReported = false;
 
     bool _useInterrupt = true;
-
-    bool _currentState = false;
-    bool _lastState = false;
-
     bool _pressPending = false;
-
-    volatile uint32_t _changeTime = 0;
 
     uint32_t _pressTime;
     uint32_t _releaseTime;
     uint32_t _lastShortTime;
 
+    uint16_t _TinyDelay = 10;
     uint16_t _ShortDelay = 50;
     uint16_t _DoubleDelay = 250;
     uint16_t _LongDelay = 500;
     uint16_t _SuperDelay = 1500;
 
     CallbackAll _callbackAll = NULL;
+    CallbackSingle _callbackTiny = NULL;
     CallbackSingle _callbackShort = NULL;
     CallbackSingle _callbackDouble = NULL;
     CallbackSingle _callbackLong = NULL;
     CallbackSingle _callbackSuper = NULL;
+    CallbackSingle _callbackConstantPress = NULL;
 };
 
 template <uint32_t pin>
