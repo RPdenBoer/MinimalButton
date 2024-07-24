@@ -16,10 +16,7 @@ enum PressLength
 template <uint32_t pin>
 class MinimalButton
 {
-    typedef void (*CallbackAll)(PressLength);
-    typedef void (*CallbackSingle)(void);
-
-    static MinimalButton<pin>* instance;
+    static MinimalButton<pin> *instance;
 
 public:
     MinimalButton(bool useInterrupt = true) : _useInterrupt(useInterrupt)
@@ -53,6 +50,11 @@ public:
         }
     }
 
+    void clear()
+    {
+        _currentPress = NO_PRESS;
+    }
+
     PressLength process()
     {
         if (!_useInterrupt)
@@ -68,62 +70,10 @@ public:
         }
 
         PressLength returnVal = _currentPress;
-        _currentPress = NO_PRESS;
 
-        if (returnVal != NO_PRESS)
-        {
-            if (_callbackAll)
-                _callbackAll(returnVal);
+        clear();
 
-            switch (returnVal)
-            {
-            case TINY_PRESS:
-                if (_callbackTiny)
-                    _callbackTiny();
-                break;
-            case SHORT_PRESS:
-                if (_callbackShort)
-                    _callbackShort();
-                break;
-            case DOUBLE_PRESS:
-                if (_callbackDouble)
-                    _callbackDouble();
-                break;
-            case LONG_PRESS:
-                if (_callbackLong)
-                    _callbackLong();
-                break;
-            case SUPER_PRESS:
-                if (_callbackSuper)
-                    _callbackSuper();
-                break;
-            case CONSTANT_PRESS:
-                if (_callbackConstantPress)
-                    _callbackConstantPress();
-                break;
-            }
-        }
         return returnVal;
-    }
-
-    bool state()
-    {
-        return _currentState;
-    }
-
-    void attach(CallbackAll funcAll)
-    {
-        _callbackAll = funcAll;
-    }
-
-    void attach(CallbackSingle funcTiny = NULL, CallbackSingle funcShort = NULL, CallbackSingle funcDouble = NULL, CallbackSingle funcLong = NULL, CallbackSingle funcSuper = NULL, CallbackSingle funcConstantPress = NULL)
-    {
-        _callbackTiny = funcTiny;
-        _callbackShort = funcShort;
-        _callbackDouble = funcDouble;
-        _callbackLong = funcLong;
-        _callbackSuper = funcSuper;
-        _callbackConstantPress = funcConstantPress;
     }
 
 private:
@@ -208,13 +158,6 @@ private:
                 _pressPending = false;
             }
         }
-
-        // Check for constant press state only if it's not reported already
-        if (_currentState && (currentTime - _pressTime > _SuperDelay) && !_constantReported)
-        {
-            _currentPress = CONSTANT_PRESS;
-            _constantReported = true;
-        }
     }
 
     volatile PressLength _currentPress = NO_PRESS;
@@ -230,20 +173,12 @@ private:
     uint32_t _releaseTime;
     uint32_t _lastShortTime;
 
-    uint16_t _TinyDelay = 10;
+    uint16_t _TinyDelay = 1;
     uint16_t _ShortDelay = 50;
     uint16_t _DoubleDelay = 250;
     uint16_t _LongDelay = 500;
     uint16_t _SuperDelay = 1500;
-
-    CallbackAll _callbackAll = NULL;
-    CallbackSingle _callbackTiny = NULL;
-    CallbackSingle _callbackShort = NULL;
-    CallbackSingle _callbackDouble = NULL;
-    CallbackSingle _callbackLong = NULL;
-    CallbackSingle _callbackSuper = NULL;
-    CallbackSingle _callbackConstantPress = NULL;
 };
 
 template <uint32_t pin>
-MinimalButton<pin>* MinimalButton<pin>::instance = nullptr;
+MinimalButton<pin> *MinimalButton<pin>::instance = nullptr;
